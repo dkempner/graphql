@@ -46,7 +46,7 @@ ctx := context.Background()
 
 // run it and capture the response
 var respData ResponseStruct
-if err := client.Run(ctx, req, &respData); err != nil {
+if _, err := client.Run(ctx, req, &respData); err != nil {
     log.Fatal(err)
 }
 ```
