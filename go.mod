@@ -1,4 +1,4 @@
-module graphql
+module github.com/dkempner/graphql
 
 go 1.22.3
 
