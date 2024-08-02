@@ -21,6 +21,9 @@ func TestWithClient(t *testing.T) {
 			calls++
 			resp := &http.Response{
 				Body: ioutil.NopCloser(strings.NewReader(`{"data":{"key":"value"}}`)),
+				Header: http.Header{
+					"Content-Type": []string{"application/json"},
+				},
 			}
 			return resp, nil
 		}),
@@ -30,9 +33,11 @@ func TestWithClient(t *testing.T) {
 	client := NewClient("", WithHTTPClient(testClient), UseMultipartForm())
 
 	req := NewRequest(``)
-	client.Run(ctx, req, nil)
+	response, err := client.Run(ctx, req)
 
+	is.NoErr(err)
 	is.Equal(calls, 1) // calls
+	is.Equal(response.Header.Get("Content-Type"), "application/json")
 }
 
 func TestDoUseMultipartForm(t *testing.T) {
@@ -43,6 +48,7 @@ func TestDoUseMultipartForm(t *testing.T) {
 		is.Equal(r.Method, http.MethodPost)
 		query := r.FormValue("query")
 		is.Equal(query, `query {}`)
+		w.Header().Set("Content-Type", "application/json")
 		io.WriteString(w, `{
 			"data": {
 				"something": "yes"
@@ -56,12 +62,14 @@ func TestDoUseMultipartForm(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(ctx, 1*time.Second)
 	defer cancel()
-	var responseData map[string]interface{}
-	err := client.Run(ctx, &Request{q: "query {}"}, &responseData)
+	response, err := client.Run(ctx, &Request{q: "query {}"})
 	is.NoErr(err)
 	is.Equal(calls, 1) // calls
+	responseData := response.Data.(map[string]interface{})
 	is.Equal(responseData["something"], "yes")
+	is.Equal(response.Header.Get("Content-Type"), "application/json")
 }
+
 func TestImmediatelyCloseReqBody(t *testing.T) {
 	is := is.New(t)
 	var calls int
@@ -70,6 +78,7 @@ func TestImmediatelyCloseReqBody(t *testing.T) {
 		is.Equal(r.Method, http.MethodPost)
 		query := r.FormValue("query")
 		is.Equal(query, `query {}`)
+		w.Header().Set("Content-Type", "application/json")
 		io.WriteString(w, `{
 			"data": {
 				"something": "yes"
@@ -83,11 +92,12 @@ func TestImmediatelyCloseReqBody(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(ctx, 1*time.Second)
 	defer cancel()
-	var responseData map[string]interface{}
-	err := client.Run(ctx, &Request{q: "query {}"}, &responseData)
+	response, err := client.Run(ctx, &Request{q: "query {}"})
 	is.NoErr(err)
 	is.Equal(calls, 1) // calls
+	responseData := response.Data.(map[string]interface{})
 	is.Equal(responseData["something"], "yes")
+	is.Equal(response.Header.Get("Content-Type"), "application/json")
 }
 
 func TestDoErr(t *testing.T) {
@@ -98,6 +108,7 @@ func TestDoErr(t *testing.T) {
 		is.Equal(r.Method, http.MethodPost)
 		query := r.FormValue("query")
 		is.Equal(query, `query {}`)
+		w.Header().Set("Content-Type", "application/json")
 		io.WriteString(w, `{
 			"errors": [{
 				"message": "Something went wrong"
@@ -111,10 +122,10 @@ func TestDoErr(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(ctx, 1*time.Second)
 	defer cancel()
-	var responseData map[string]interface{}
-	err := client.Run(ctx, &Request{q: "query {}"}, &responseData)
+	response, err := client.Run(ctx, &Request{q: "query {}"})
 	is.True(err != nil)
 	is.Equal(err.Error(), "graphql: Something went wrong")
+	is.Equal(response.Header.Get("Content-Type"), "application/json")
 }
 
 func TestDoServerErr(t *testing.T) {
@@ -126,17 +137,17 @@ func TestDoServerErr(t *testing.T) {
 		query := r.FormValue("query")
 		is.Equal(query, `query {}`)
 		w.WriteHeader(http.StatusInternalServerError)
+		w.Header().Set("Content-Type", "application/json")
 		io.WriteString(w, `Internal Server Error`)
 	}))
 	defer srv.Close()
 
 	ctx := context.Background()
 	client := NewClient(srv.URL, UseMultipartForm())
-
 	ctx, cancel := context.WithTimeout(ctx, 1*time.Second)
 	defer cancel()
-	var responseData map[string]interface{}
-	err := client.Run(ctx, &Request{q: "query {}"}, &responseData)
+	_, err := client.Run(ctx, &Request{q: "query {}"})
+	is.True(err != nil) // Ensure there's an error
 	is.Equal(err.Error(), "graphql: server returned a non-200 status code: 500")
 }
 
@@ -149,6 +160,8 @@ func TestDoBadRequestErr(t *testing.T) {
 		query := r.FormValue("query")
 		is.Equal(query, `query {}`)
 		w.WriteHeader(http.StatusBadRequest)
+		// Set the Content-Type header before writing the response
+		w.Header().Set("Content-Type", "application/json")
 		io.WriteString(w, `{
 			"errors": [{
 				"message": "miscellaneous message as to why the the request was bad"
@@ -162,8 +175,8 @@ func TestDoBadRequestErr(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(ctx, 1*time.Second)
 	defer cancel()
-	var responseData map[string]interface{}
-	err := client.Run(ctx, &Request{q: "query {}"}, &responseData)
+	_, err := client.Run(ctx, &Request{q: "query {}"})
+	is.True(err != nil) // Ensure there's an error
 	is.Equal(err.Error(), "graphql: miscellaneous message as to why the the request was bad")
 }
 
@@ -175,6 +188,7 @@ func TestDoNoResponse(t *testing.T) {
 		is.Equal(r.Method, http.MethodPost)
 		query := r.FormValue("query")
 		is.Equal(query, `query {}`)
+		w.Header().Set("Content-Type", "application/json")
 		io.WriteString(w, `{
 			"data": {
 				"something": "yes"
@@ -188,7 +202,7 @@ func TestDoNoResponse(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(ctx, 1*time.Second)
 	defer cancel()
-	err := client.Run(ctx, &Request{q: "query {}"}, nil)
+	_, err := client.Run(ctx, &Request{q: "query {}"})
 	is.NoErr(err)
 	is.Equal(calls, 1) // calls
 }
@@ -202,6 +216,7 @@ func TestQuery(t *testing.T) {
 		query := r.FormValue("query")
 		is.Equal(query, "query {}")
 		is.Equal(r.FormValue("variables"), `{"username":"matryer"}`+"\n")
+		w.Header().Set("Content-Type", "application/json")
 		_, err := io.WriteString(w, `{"data":{"value":"some data"}}`)
 		is.NoErr(err)
 	}))
@@ -218,15 +233,13 @@ func TestQuery(t *testing.T) {
 	is.True(req != nil)
 	is.Equal(req.vars["username"], "matryer")
 
-	var resp struct {
-		Value string
-	}
-	err := client.Run(ctx, req, &resp)
+	response, err := client.Run(ctx, req)
 	is.NoErr(err)
 	is.Equal(calls, 1)
 
-	is.Equal(resp.Value, "some data")
-
+	responseData := response.Data.(map[string]interface{})
+	is.Equal(responseData["value"], "some data")
+	is.Equal(response.Header.Get("Content-Type"), "application/json")
 }
 
 func TestFile(t *testing.T) {
@@ -244,6 +257,7 @@ func TestFile(t *testing.T) {
 		is.NoErr(err)
 		is.Equal(string(b), `This is a file`)
 
+		w.Header().Set("Content-Type", "application/json")
 		_, err = io.WriteString(w, `{"data":{"value":"some data"}}`)
 		is.NoErr(err)
 	}))
@@ -254,8 +268,9 @@ func TestFile(t *testing.T) {
 	f := strings.NewReader(`This is a file`)
 	req := NewRequest("query {}")
 	req.File("file", "filename.txt", f)
-	err := client.Run(ctx, req, nil)
+	response, err := client.Run(ctx, req)
 	is.NoErr(err)
+	is.Equal(response.Header.Get("Content-Type"), "application/json")
 }
 
 type roundTripperFunc func(req *http.Request) (*http.Response, error)

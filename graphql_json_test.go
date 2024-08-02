@@ -34,10 +34,11 @@ func TestDoJSON(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(ctx, 1*time.Second)
 	defer cancel()
-	var responseData map[string]interface{}
-	err := client.Run(ctx, &Request{q: "query {}"}, &responseData)
+	resp, err := client.Run(ctx, &Request{q: "query {}"})
 	is.NoErr(err)
 	is.Equal(calls, 1) // calls
+	responseData, ok := resp.Data.(map[string]interface{})
+	is.True(ok)
 	is.Equal(responseData["something"], "yes")
 }
 
@@ -60,8 +61,7 @@ func TestDoJSONServerError(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(ctx, 1*time.Second)
 	defer cancel()
-	var responseData map[string]interface{}
-	err := client.Run(ctx, &Request{q: "query {}"}, &responseData)
+	_, err := client.Run(ctx, &Request{q: "query {}"})
 	is.Equal(calls, 1) // calls
 	is.Equal(err.Error(), "graphql: server returned a non-200 status code: 500")
 }
@@ -89,8 +89,7 @@ func TestDoJSONBadRequestErr(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(ctx, 1*time.Second)
 	defer cancel()
-	var responseData map[string]interface{}
-	err := client.Run(ctx, &Request{q: "query {}"}, &responseData)
+	_, err := client.Run(ctx, &Request{q: "query {}"})
 	is.Equal(calls, 1) // calls
 	is.Equal(err.Error(), "graphql: miscellaneous message as to why the the request was bad")
 }
@@ -120,14 +119,13 @@ func TestQueryJSON(t *testing.T) {
 	is.True(req != nil)
 	is.Equal(req.vars["username"], "matryer")
 
-	var resp struct {
-		Value string
-	}
-	err := client.Run(ctx, req, &resp)
+	resp, err := client.Run(ctx, req)
 	is.NoErr(err)
 	is.Equal(calls, 1)
 
-	is.Equal(resp.Value, "some data")
+	responseData, ok := resp.Data.(map[string]interface{})
+	is.True(ok)
+	is.Equal(responseData["value"], "some data")
 }
 
 func TestHeader(t *testing.T) {
@@ -150,12 +148,11 @@ func TestHeader(t *testing.T) {
 	req := NewRequest("query {}")
 	req.Header.Set("X-Custom-Header", "123")
 
-	var resp struct {
-		Value string
-	}
-	err := client.Run(ctx, req, &resp)
+	resp, err := client.Run(ctx, req)
 	is.NoErr(err)
 	is.Equal(calls, 1)
 
-	is.Equal(resp.Value, "some data")
+	responseData, ok := resp.Data.(map[string]interface{})
+	is.True(ok)
+	is.Equal(responseData["value"], "some data")
 }
