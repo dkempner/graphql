@@ -45,8 +45,7 @@ req.Header.Set("Cache-Control", "no-cache")
 ctx := context.Background()
 
 // run it and capture the response
-var respData ResponseStruct
-if err := client.Run(ctx, req, &respData); err != nil {
+if respData, err := client.Run(ctx, req); err != nil {
     log.Fatal(err)
 }
 ```
